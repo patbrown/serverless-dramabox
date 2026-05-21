@@ -16,6 +16,8 @@ from src.model_downloader import get_all_paths
 LOGGER = logging.getLogger("dramabox-runtime")
 LOGGER.setLevel(logging.INFO)
 
+WORKER_VERSION = "dramabox-serverless-2026-05-21-v2-failure-fields"
+
 _SERVER = None
 _SERVER_LOAD_SECONDS = None
 _MODEL_PATHS = None
@@ -128,6 +130,7 @@ def health():
     loaded = _SERVER is not None
     return {
         "status": "ok",
+        "worker_version": WORKER_VERSION,
         "loaded": loaded,
         "model_load_seconds": _SERVER_LOAD_SECONDS,
         "cache_dir": str(cache_dir()),
@@ -178,6 +181,7 @@ def generate(input_payload):
 
     return {
         "status": "COMPLETED",
+        "worker_version": WORKER_VERSION,
         "output": {
             "artifact_base64": artifact_base64,
             "artifact_filename": output_path.name,
@@ -211,6 +215,7 @@ def safe_generate(input_payload):
         LOGGER.exception("Dramabox generation failed.")
         return {
             "status": "FAILED",
+            "worker_version": WORKER_VERSION,
             "failure_class": exc.__class__.__name__,
             "failure_message": str(exc),
             "failure_traceback": traceback.format_exc(),
