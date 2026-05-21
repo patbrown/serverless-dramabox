@@ -16,11 +16,12 @@ from src.model_downloader import get_all_paths
 LOGGER = logging.getLogger("dramabox-runtime")
 LOGGER.setLevel(logging.INFO)
 
-WORKER_VERSION = "dramabox-serverless-2026-05-21-v2-failure-fields"
+WORKER_VERSION = "dramabox-serverless-2026-05-21-v3-no-compile-default"
 
 _SERVER = None
 _SERVER_LOAD_SECONDS = None
 _MODEL_PATHS = None
+_SERVER_OPTIONS = None
 
 
 def _now_ms():
@@ -100,6 +101,7 @@ def get_server():
     global _SERVER
     global _SERVER_LOAD_SECONDS
     global _MODEL_PATHS
+    global _SERVER_OPTIONS
 
     if _SERVER is not None:
         return _SERVER
@@ -115,11 +117,21 @@ def get_server():
     _MODEL_PATHS = get_all_paths(str(selected_cache))
     LOGGER.info("Dramabox model paths: %s", json.dumps(_MODEL_PATHS, sort_keys=True))
 
+    _SERVER_OPTIONS = {
+        "compile_model": _coerce_bool(os.environ.get("DRAMABOX_COMPILE_MODEL"), False),
+        "bnb_4bit": _coerce_bool(os.environ.get("DRAMABOX_BNB_4BIT"), True),
+        "dtype": os.environ.get("DRAMABOX_DTYPE", "bf16"),
+    }
+    LOGGER.info("Dramabox server options: %s", json.dumps(_SERVER_OPTIONS, sort_keys=True))
+
     _SERVER = TTSServer(
         checkpoint=_MODEL_PATHS["transformer"],
         full_checkpoint=_MODEL_PATHS["audio_components"],
         gemma_root=_MODEL_PATHS["gemma_root"],
         device="cuda",
+        dtype=_SERVER_OPTIONS["dtype"],
+        compile_model=_SERVER_OPTIONS["compile_model"],
+        bnb_4bit=_SERVER_OPTIONS["bnb_4bit"],
     )
     _SERVER_LOAD_SECONDS = round(time.time() - started, 3)
     LOGGER.info("Dramabox server loaded in %.3fs", _SERVER_LOAD_SECONDS)
@@ -133,6 +145,7 @@ def health():
         "worker_version": WORKER_VERSION,
         "loaded": loaded,
         "model_load_seconds": _SERVER_LOAD_SECONDS,
+        "server_options": _SERVER_OPTIONS,
         "cache_dir": str(cache_dir()),
         "output_dir": str(output_dir()),
         "gpu": gpu_snapshot("health"),

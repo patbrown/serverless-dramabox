@@ -74,6 +74,9 @@ Optional:
 DRAMABOX_CACHE_DIR=/runpod-volume/dramabox-cache
 DRAMABOX_OUTPUT_DIR=/tmp/dramabox-output
 DRAMABOX_PRELOAD=1
+DRAMABOX_COMPILE_MODEL=0
+DRAMABOX_DTYPE=bf16
+DRAMABOX_BNB_4BIT=1
 HF_TOKEN=...
 #+end_src
 
@@ -89,4 +92,6 @@ If =DRAMABOX_CACHE_DIR= is absent, the worker chooses:
 - The worker installs Dramabox requirements in the image.
 - Model weights are downloaded at worker startup into the selected cache.
 - =TTSServer= is loaded once per worker process and reused.
+- =torch.compile= is disabled by default because the runtime image does not
+  include a C compiler for Triton/Inductor JIT.
 - This first worker intentionally avoids S3/object storage.
