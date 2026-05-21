@@ -1,4 +1,5 @@
 import base64
+import datetime as dt
 import json
 import logging
 import os
@@ -16,7 +17,9 @@ from src.model_downloader import get_all_paths
 LOGGER = logging.getLogger("dramabox-runtime")
 LOGGER.setLevel(logging.INFO)
 
-WORKER_VERSION = "dramabox-serverless-2026-05-21-v3-no-compile-default"
+WORKER_VERSION = "dramabox-serverless-2026-05-21-v5-s3-defaults"
+DEFAULT_S3_PREFIX = "dramabox"
+DEFAULT_S3_PRESIGN_SECONDS = 86400
 
 _SERVER = None
 _SERVER_LOAD_SECONDS = None
@@ -79,6 +82,14 @@ def _coerce_bool(value, default=False):
     return bool(value)
 
 
+def _first_env(*names):
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
 def _normalize_input(input_payload):
     payload = dict(input_payload or {})
     prompt = payload.get("prompt") or payload.get("text")
@@ -93,8 +104,100 @@ def _normalize_input(input_payload):
         "duration_multiplier": float(payload.get("duration_multiplier", 1.1)),
         "seed": int(payload.get("seed", 42)),
         "watermark": _coerce_bool(payload.get("watermark"), True),
+        "output_mode": payload.get("output_mode") or os.environ.get("DRAMABOX_OUTPUT_MODE"),
+        "runpod_job_id": payload.get("_runpod_job_id"),
     }
     return normalized
+
+
+def _s3_bucket():
+    return _first_env(
+        "DRAMABOX_S3_BUCKET",
+        "S3_BUCKET",
+        "AWS_S3_BUCKET",
+        "AWS_S3_BUCKET_NAME",
+        "AWS_BUCKET_NAME",
+    )
+
+
+def _s3_prefix():
+    return (os.environ.get("DRAMABOX_S3_PREFIX") or DEFAULT_S3_PREFIX).strip("/")
+
+
+def _default_output_mode():
+    if _s3_bucket():
+        return "s3"
+    return "base64"
+
+
+def _output_mode(request):
+    mode = request.get("output_mode") or _default_output_mode()
+    mode = str(mode).strip().lower()
+    if mode not in {"s3", "base64", "both"}:
+        raise ValueError("output_mode must be one of: s3, base64, both.")
+    if mode in {"s3", "both"} and not _s3_bucket():
+        raise ValueError("S3 output requested but DRAMABOX_S3_BUCKET is not set.")
+    return mode
+
+
+def _s3_key(output_path, request):
+    prefix = _s3_prefix()
+    today = dt.datetime.now(dt.timezone.utc).strftime("%Y/%m/%d")
+    job_id = request.get("runpod_job_id") or uuid.uuid4().hex
+    filename = f"{job_id}-{output_path.name}"
+    if prefix:
+        return f"{prefix}/{today}/{filename}"
+    return f"{today}/{filename}"
+
+
+def _s3_client():
+    import boto3
+
+    kwargs = {}
+    endpoint_url = os.environ.get("DRAMABOX_S3_ENDPOINT_URL") or os.environ.get("AWS_ENDPOINT_URL_S3")
+    if endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    if region:
+        kwargs["region_name"] = region
+    return boto3.client("s3", **kwargs)
+
+
+def _public_artifact_url(bucket, key):
+    base = os.environ.get("DRAMABOX_S3_PUBLIC_BASE_URL")
+    if not base:
+        return None
+    return f"{base.rstrip('/')}/{key}"
+
+
+def _presigned_artifact_url(client, bucket, key):
+    seconds = int(os.environ.get("DRAMABOX_S3_PRESIGN_SECONDS", DEFAULT_S3_PRESIGN_SECONDS))
+    if seconds <= 0:
+        return None
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=seconds,
+    )
+
+
+def upload_artifact_to_s3(output_path, request):
+    bucket = _s3_bucket()
+    key = _s3_key(output_path, request)
+    client = _s3_client()
+    client.upload_file(
+        str(output_path),
+        bucket,
+        key,
+        ExtraArgs={"ContentType": "audio/wav"},
+    )
+    return {
+        "s3_bucket": bucket,
+        "s3_key": key,
+        "s3_uri": f"s3://{bucket}/{key}",
+        "artifact_url": _public_artifact_url(bucket, key),
+        "presigned_url": _presigned_artifact_url(client, bucket, key),
+    }
 
 
 def get_server():
@@ -146,6 +249,11 @@ def health():
         "loaded": loaded,
         "model_load_seconds": _SERVER_LOAD_SECONDS,
         "server_options": _SERVER_OPTIONS,
+        "s3_enabled": bool(_s3_bucket()),
+        "s3_bucket": _s3_bucket(),
+        "s3_prefix": _s3_prefix(),
+        "s3_presign_seconds": int(os.environ.get("DRAMABOX_S3_PRESIGN_SECONDS", DEFAULT_S3_PRESIGN_SECONDS)),
+        "default_output_mode": _default_output_mode(),
         "cache_dir": str(cache_dir()),
         "output_dir": str(output_dir()),
         "gpu": gpu_snapshot("health"),
@@ -187,24 +295,33 @@ def generate(input_payload):
     if not output_path.exists():
         raise FileNotFoundError(f"Dramabox did not create output file: {output_path}")
 
-    artifact_bytes = output_path.read_bytes()
+    output_mode = _output_mode(request)
+    artifact = {
+        "artifact_filename": output_path.name,
+        "artifact_path": str(output_path),
+        "content_type": "audio/wav",
+        "output_bytes": output_path.stat().st_size,
+        "result": str(result),
+        "generation_seconds": generation_seconds,
+        "model_load_seconds": _SERVER_LOAD_SECONDS,
+        "output_mode": output_mode,
+    }
 
-    stage = "base64_encode_output"
-    artifact_base64 = base64.b64encode(artifact_bytes).decode("ascii")
+    if output_mode in {"s3", "both"}:
+        stage = "upload_s3"
+        artifact.update(upload_artifact_to_s3(output_path, request))
+
+    if output_mode in {"base64", "both"}:
+        stage = "read_output"
+        artifact_bytes = output_path.read_bytes()
+
+        stage = "base64_encode_output"
+        artifact["artifact_base64"] = base64.b64encode(artifact_bytes).decode("ascii")
 
     return {
         "status": "COMPLETED",
         "worker_version": WORKER_VERSION,
-        "output": {
-            "artifact_base64": artifact_base64,
-            "artifact_filename": output_path.name,
-            "artifact_path": str(output_path),
-            "content_type": "audio/wav",
-            "output_bytes": len(artifact_bytes),
-            "result": str(result),
-            "generation_seconds": generation_seconds,
-            "model_load_seconds": _SERVER_LOAD_SECONDS,
-        },
+        "output": artifact,
         "request": request,
         "timing": {
             "started_ms": started_ms,

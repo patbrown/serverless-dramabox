@@ -12,7 +12,11 @@ logging.basicConfig(
 
 
 def handler(job):
-    return safe_generate((job or {}).get("input", {}))
+    job = job or {}
+    input_payload = dict(job.get("input", {}) or {})
+    if job.get("id"):
+        input_payload["_runpod_job_id"] = job["id"]
+    return safe_generate(input_payload)
 
 
 runpod.serverless.start({"handler": handler})

@@ -47,19 +47,23 @@ call =/runsync= through the RunPod API URL for that endpoint.
 
 * Response
 
-The first smoke version returns the WAV as base64 so we can test without object
-storage.
+When =DRAMABOX_S3_BUCKET= is set, the worker uploads the WAV to S3 and returns
+object metadata. Use =output_mode= =base64= only for smoke tests.
 
 #+begin_src json
 {
   "status": "COMPLETED",
   "output": {
-    "artifact_base64": "...",
     "artifact_filename": "dramabox-....wav",
+    "output_mode": "s3",
+    "s3_bucket": "example-bucket",
+    "s3_key": "dramabox/2026/05/21/job-id-dramabox-....wav",
+    "s3_uri": "s3://example-bucket/dramabox/2026/05/21/job-id-dramabox-....wav",
+    "presigned_url": "https://...",
     "content_type": "audio/wav",
-    "output_bytes": 4058968,
-    "generation_seconds": 356.34,
-    "model_load_seconds": 21.46
+    "output_bytes": 1660878,
+    "generation_seconds": 17.96,
+    "model_load_seconds": 40.92
   },
   "timing": {},
   "gpu": {}
@@ -68,7 +72,7 @@ storage.
 
 * Environment Variables
 
-Optional:
+Set these in RunPod:
 
 #+begin_src text
 DRAMABOX_CACHE_DIR=/runpod-volume/dramabox-cache
@@ -77,8 +81,29 @@ DRAMABOX_PRELOAD=1
 DRAMABOX_COMPILE_MODEL=0
 DRAMABOX_DTYPE=bf16
 DRAMABOX_BNB_4BIT=1
+DRAMABOX_S3_BUCKET=...
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
 HF_TOKEN=...
 #+end_src
+
+Only the access key and secret key are sensitive. Bucket and region are runtime
+configuration.
+
+S3 behavior:
+
+- If an S3 bucket is set and =DRAMABOX_OUTPUT_MODE= is absent, the default
+  output mode is =s3=.
+- =output_mode= may be =s3=, =base64=, or =both= per request.
+- The default S3 prefix is =dramabox=.
+- Presigned URLs default to 86400 seconds.
+- Set =DRAMABOX_S3_PRESIGN_SECONDS= to =0= to skip presigned URLs.
+- Optional =DRAMABOX_S3_ENDPOINT_URL= supports S3-compatible storage.
+- Optional =DRAMABOX_S3_PUBLIC_BASE_URL= is only for public buckets with a
+  stable base URL.
+- Bucket env names accepted: =DRAMABOX_S3_BUCKET=, =S3_BUCKET=,
+  =AWS_S3_BUCKET=, =AWS_S3_BUCKET_NAME=, =AWS_BUCKET_NAME=.
 
 If =DRAMABOX_CACHE_DIR= is absent, the worker chooses:
 
@@ -94,4 +119,4 @@ If =DRAMABOX_CACHE_DIR= is absent, the worker chooses:
 - =TTSServer= is loaded once per worker process and reused.
 - =torch.compile= is disabled by default because the runtime image does not
   include a C compiler for Triton/Inductor JIT.
-- This first worker intentionally avoids S3/object storage.
+- Production output should use S3. Base64 remains available for smoke tests.

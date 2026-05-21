@@ -7,6 +7,6 @@
     "duration_multiplier": 1.1,
     "seed": 42,
     "watermark": true,
-    "output_mode": "s3"
+    "output_mode": "base64"
   }
 }

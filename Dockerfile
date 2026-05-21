@@ -28,6 +28,6 @@ WORKDIR /app
 
 COPY handler.py dramabox_runtime.py ./
 
-RUN python -m pip install runpod
+RUN python -m pip install runpod boto3
 
 CMD ["python", "-u", "/app/handler.py"]
