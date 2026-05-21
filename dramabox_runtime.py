@@ -138,27 +138,42 @@ def health():
 
 def generate(input_payload):
     started_ms = _now_ms()
+    stage = "normalize_input"
     request = _normalize_input(input_payload)
+
+    stage = "get_server"
     server = get_server()
 
     output_path = output_dir() / f"dramabox-{uuid.uuid4().hex}.wav"
 
+    generate_kwargs = {
+        "prompt": request["prompt"],
+        "output": str(output_path),
+        "cfg_scale": request["cfg_scale"],
+        "stg_scale": request["stg_scale"],
+        "duration_multiplier": request["duration_multiplier"],
+        "seed": request["seed"],
+        "watermark": request["watermark"],
+    }
+    if request["voice_ref"]:
+        generate_kwargs["voice_ref"] = request["voice_ref"]
+
     before_gpu = gpu_snapshot("before_generate")
     gen_started = time.time()
-    result = server.generate_to_file(
-        prompt=request["prompt"],
-        output=str(output_path),
-        voice_ref=request["voice_ref"],
-        cfg_scale=request["cfg_scale"],
-        stg_scale=request["stg_scale"],
-        duration_multiplier=request["duration_multiplier"],
-        seed=request["seed"],
-        watermark=request["watermark"],
-    )
+    stage = "generate_to_file"
+    result = server.generate_to_file(**generate_kwargs)
     generation_seconds = round(time.time() - gen_started, 3)
+
+    stage = "after_generate_gpu_snapshot"
     after_gpu = gpu_snapshot("after_generate")
 
+    stage = "read_output"
+    if not output_path.exists():
+        raise FileNotFoundError(f"Dramabox did not create output file: {output_path}")
+
     artifact_bytes = output_path.read_bytes()
+
+    stage = "base64_encode_output"
     artifact_base64 = base64.b64encode(artifact_bytes).decode("ascii")
 
     return {
@@ -179,6 +194,7 @@ def generate(input_payload):
             "ended_ms": _now_ms(),
             "total_seconds": round((_now_ms() - started_ms) / 1000.0, 3),
         },
+        "stage": stage,
         "gpu": {
             "before": before_gpu,
             "after": after_gpu,
@@ -195,11 +211,9 @@ def safe_generate(input_payload):
         LOGGER.exception("Dramabox generation failed.")
         return {
             "status": "FAILED",
-            "error": {
-                "class": exc.__class__.__name__,
-                "message": str(exc),
-                "traceback": traceback.format_exc(),
-            },
+            "failure_class": exc.__class__.__name__,
+            "failure_message": str(exc),
+            "failure_traceback": traceback.format_exc(),
             "gpu": gpu_snapshot("failure"),
         }
 
