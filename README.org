@@ -14,8 +14,8 @@ It is meant to be deployed from GitHub through the RunPod browser UI.
 Use:
 
 #+begin_src text
-Build context: repository root
-Dockerfile path: resources/runpod/dramabox/serverless/Dockerfile
+Repository root: resources/runpod/serverless/dramabox
+Dockerfile path: Dockerfile
 #+end_src
 
 Recommended first endpoint:
@@ -23,8 +23,11 @@ Recommended first endpoint:
 #+begin_src text
 Endpoint type: Queue
 GPU: 48GB VRAM or larger
-Request path: /runsync
+Container disk: 150GB
 #+end_src
+
+The request path is not a deploy setting. After RunPod creates the endpoint,
+call =/runsync= through the RunPod API URL for that endpoint.
 
 * Request
 

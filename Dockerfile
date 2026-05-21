@@ -26,7 +26,7 @@ RUN python -m pip install -r requirements.txt
 
 WORKDIR /app
 
-COPY resources/runpod/dramabox/serverless/handler.py resources/runpod/dramabox/serverless/dramabox_runtime.py ./
+COPY handler.py dramabox_runtime.py ./
 
 RUN python -m pip install runpod
 
