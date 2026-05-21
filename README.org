@@ -1,6 +1,6 @@
 #+TITLE: Dramabox RunPod Serverless Worker
 
-The world is a stage.
+The world is a stage. Shakespeare.
 
 * Purpose
 
