@@ -1,0 +1,11 @@
+{
+  "input": {
+    "prompt": "A woman speaks warmly, \"Hello, how are you today?\" She laughs, \"Hahaha, it is so good to see you!\"",
+    "voice_ref": null,
+    "cfg_scale": 2.5,
+    "stg_scale": 1.5,
+    "duration_multiplier": 1.1,
+    "seed": 42,
+    "watermark": true
+  }
+}

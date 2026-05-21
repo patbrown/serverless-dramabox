@@ -1,0 +1,87 @@
+#+TITLE: Dramabox RunPod Serverless Worker
+
+* Purpose
+
+This directory is a self-contained RunPod serverless worker for
+=ResembleAI/Dramabox=.
+
+It is meant to be deployed from GitHub through the RunPod browser UI.
+
+* RunPod GitHub Deploy Settings
+
+Use:
+
+#+begin_src text
+Build context: repository root
+Dockerfile path: resources/runpod/dramabox/serverless/Dockerfile
+#+end_src
+
+Recommended first endpoint:
+
+#+begin_src text
+Endpoint type: Queue
+GPU: 48GB VRAM or larger
+Request path: /runsync
+#+end_src
+
+* Request
+
+#+begin_src json
+{
+  "input": {
+    "prompt": "A woman speaks warmly, \"Hello, how are you today?\"",
+    "voice_ref": null,
+    "cfg_scale": 2.5,
+    "stg_scale": 1.5,
+    "duration_multiplier": 1.1,
+    "seed": 42,
+    "watermark": true
+  }
+}
+#+end_src
+
+* Response
+
+The first smoke version returns the WAV as base64 so we can test without object
+storage.
+
+#+begin_src json
+{
+  "status": "COMPLETED",
+  "output": {
+    "artifact_base64": "...",
+    "artifact_filename": "dramabox-....wav",
+    "content_type": "audio/wav",
+    "output_bytes": 4058968,
+    "generation_seconds": 356.34,
+    "model_load_seconds": 21.46
+  },
+  "timing": {},
+  "gpu": {}
+}
+#+end_src
+
+* Environment Variables
+
+Optional:
+
+#+begin_src text
+DRAMABOX_CACHE_DIR=/runpod-volume/dramabox-cache
+DRAMABOX_OUTPUT_DIR=/tmp/dramabox-output
+DRAMABOX_PRELOAD=1
+HF_TOKEN=...
+#+end_src
+
+If =DRAMABOX_CACHE_DIR= is absent, the worker chooses:
+
+1. =/runpod-volume/dramabox-cache= when =/runpod-volume= exists
+2. =/workspace/dramabox-cache= when =/workspace= exists
+3. =/tmp/dramabox-cache=
+
+* Notes
+
+- The worker clones Dramabox at image build time.
+- The worker installs Dramabox requirements in the image.
+- Model weights are downloaded at worker startup into the selected cache.
+- =TTSServer= is loaded once per worker process and reused.
+- This first worker intentionally avoids S3/object storage.
