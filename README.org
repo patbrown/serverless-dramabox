@@ -1,5 +1,7 @@
 #+TITLE: Dramabox RunPod Serverless Worker
 
+The world is a stage.
+
 * Purpose
 
 This directory is a self-contained RunPod serverless worker for
