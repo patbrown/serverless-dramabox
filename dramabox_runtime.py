@@ -1,5 +1,4 @@
 import base64
-import datetime as dt
 import json
 import logging
 import os
@@ -17,8 +16,7 @@ from src.model_downloader import get_all_paths
 LOGGER = logging.getLogger("dramabox-runtime")
 LOGGER.setLevel(logging.INFO)
 
-WORKER_VERSION = "dramabox-serverless-2026-05-21-v5-s3-defaults"
-DEFAULT_S3_PREFIX = "dramabox"
+WORKER_VERSION = "dramabox-serverless-2026-05-21-v6-flat-ms-s3-key"
 DEFAULT_S3_PRESIGN_SECONDS = 86400
 
 _SERVER = None
@@ -120,10 +118,6 @@ def _s3_bucket():
     )
 
 
-def _s3_prefix():
-    return (os.environ.get("DRAMABOX_S3_PREFIX") or DEFAULT_S3_PREFIX).strip("/")
-
-
 def _default_output_mode():
     if _s3_bucket():
         return "s3"
@@ -141,13 +135,7 @@ def _output_mode(request):
 
 
 def _s3_key(output_path, request):
-    prefix = _s3_prefix()
-    today = dt.datetime.now(dt.timezone.utc).strftime("%Y/%m/%d")
-    job_id = request.get("runpod_job_id") or uuid.uuid4().hex
-    filename = f"{job_id}-{output_path.name}"
-    if prefix:
-        return f"{prefix}/{today}/{filename}"
-    return f"{today}/{filename}"
+    return f"{_now_ms()}.wav"
 
 
 def _s3_client():
@@ -251,7 +239,7 @@ def health():
         "server_options": _SERVER_OPTIONS,
         "s3_enabled": bool(_s3_bucket()),
         "s3_bucket": _s3_bucket(),
-        "s3_prefix": _s3_prefix(),
+        "s3_key_shape": "<time-ms>.wav",
         "s3_presign_seconds": int(os.environ.get("DRAMABOX_S3_PRESIGN_SECONDS", DEFAULT_S3_PRESIGN_SECONDS)),
         "default_output_mode": _default_output_mode(),
         "cache_dir": str(cache_dir()),

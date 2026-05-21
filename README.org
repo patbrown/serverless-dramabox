@@ -57,8 +57,8 @@ object metadata. Use =output_mode= =base64= only for smoke tests.
     "artifact_filename": "dramabox-....wav",
     "output_mode": "s3",
     "s3_bucket": "example-bucket",
-    "s3_key": "dramabox/2026/05/21/job-id-dramabox-....wav",
-    "s3_uri": "s3://example-bucket/dramabox/2026/05/21/job-id-dramabox-....wav",
+    "s3_key": "1779394952075.wav",
+    "s3_uri": "s3://example-bucket/1779394952075.wav",
     "presigned_url": "https://...",
     "content_type": "audio/wav",
     "output_bytes": 1660878,
@@ -96,7 +96,7 @@ S3 behavior:
 - If an S3 bucket is set and =DRAMABOX_OUTPUT_MODE= is absent, the default
   output mode is =s3=.
 - =output_mode= may be =s3=, =base64=, or =both= per request.
-- The default S3 prefix is =dramabox=.
+- S3 keys are flat millisecond timestamps: =<time-ms>.wav=.
 - Presigned URLs default to 86400 seconds.
 - Set =DRAMABOX_S3_PRESIGN_SECONDS= to =0= to skip presigned URLs.
 - Optional =DRAMABOX_S3_ENDPOINT_URL= supports S3-compatible storage.
